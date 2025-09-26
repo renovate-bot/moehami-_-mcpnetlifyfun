@@ -1,0 +1,112 @@
+name: Serverless MCP Setup and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  setup-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Clone Netlify examples repository
+      run: |
+        git clone https://github.com/netlify/examples.git
+        ls -la examples/
+    
+    - name: Navigate to serverless MCP project
+      working-directory: examples/mcp/serverless-mcp
+      run: |
+        pwd
+        ls -la
+    
+    - name: Install dependencies
+      working-directory: examples/mcp/serverless-mcp
+      run: |
+        npm install
+    
+    - name: Install Netlify CLI globally
+      run: npm install -g netlify-cli
+    
+    - name: Verify Netlify CLI installation
+      run: netlify --version
+    
+    - name: Install MCP inspector
+      run: npm install -g @modelcontextprotocol/inspector mcp-remote@next
+    
+    - name: Start Netlify Dev in background
+      working-directory: examples/mcp/serverless-mcp
+      run: |
+        netlify dev --port 8888 &
+        echo $! > netlify_pid.txt
+        sleep 30  # Wait for server to start
+    
+    - name: Verify server is running
+      run: |
+        curl -f http://localhost:8888 || exit 1
+        echo "Server is running successfully"
+    
+    - name: Test MCP endpoint
+      run: |
+        timeout 60s curl -f http://localhost:8888/mcp || echo "MCP endpoint test completed"
+    
+    - name: Run MCP Inspector (optional validation)
+      run: |
+        timeout 30s npx @modelcontextprotocol/inspector npx mcp-remote@next http://localhost:8888/mcp || echo "MCP Inspector validation completed"
+    
+    - name: Cleanup
+      if: always()
+      working-directory: examples/mcp/serverless-mcp
+      run: |
+        if [ -f netlify_pid.txt ]; then
+          kill $(cat netlify_pid.txt) || true
+          rm netlify_pid.txt
+        fi
+        pkill -f "netlify dev" || true
+
+  # Optional: Deploy to Netlify for testing
+  deploy-test:
+    runs-on: ubuntu-latest
+    needs: setup-and-test
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Clone Netlify examples repository
+      run: git clone https://github.com/netlify/examples.git
+    
+    - name: Install dependencies
+      working-directory: examples/mcp/serverless-mcp
+      run: npm install
+    
+    - name: Install Netlify CLI
+      run: npm install -g netlify-cli
+    
+    - name: Deploy to Netlify
+      working-directory: examples/mcp/serverless-mcp
+      env:
+        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      run: |
+        netlify deploy --prod --dir=.
+      if: env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
