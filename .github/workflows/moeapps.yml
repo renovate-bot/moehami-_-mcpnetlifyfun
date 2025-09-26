@@ -18,19 +18,20 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '20'
         cache: 'npm'
     
-    - name: Clone Netlify examples repository
+    - name: Clone Netlify MCP Server repository
       run: |
-        git clone https://github.com/netlify/examples.git
-        echo "Contents of examples directory:"
-        ls -la examples/
-        echo "Contents of examples/mcp/:"
-        ls -la examples/mcp/ || echo "examples/mcp directory not found"
+        git clone https://github.com/netlify/netlify-mcp.git
+        echo "Contents of netlify-mcp directory:"
+        ls -la netlify-mcp/
+        echo "Looking for example directories:"
+        find netlify-mcp/ -name "*example*" -type d || echo "No example directories found"
+        find netlify-mcp/ -name "*serverless*" -type d || echo "No serverless directories found"
     
-    - name: Navigate to Express MCP project
-      working-directory: examples/mcp/express-mcp
+    - name: Navigate to MCP server project
+      working-directory: netlify-mcp
       run: |
         pwd
         ls -la
@@ -38,7 +39,7 @@ jobs:
         cat package.json || echo "No package.json found"
     
     - name: Install dependencies
-      working-directory: examples/mcp/express-mcp
+      working-directory: netlify-mcp
       run: |
         npm install
     
@@ -52,7 +53,7 @@ jobs:
       run: npm install -g @modelcontextprotocol/inspector mcp-remote@next
     
     - name: Start Netlify Dev in background
-      working-directory: examples/mcp/express-mcp
+      working-directory: netlify-mcp
       run: |
         netlify dev --port 8888 &
         echo $! > netlify_pid.txt
@@ -73,7 +74,7 @@ jobs:
     
     - name: Cleanup
       if: always()
-      working-directory: examples/mcp/express-mcp
+      working-directory: netlify-mcp
       run: |
         if [ -f netlify_pid.txt ]; then
           kill $(cat netlify_pid.txt) || true
@@ -94,21 +95,21 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '20'
         cache: 'npm'
     
-    - name: Clone Netlify examples repository
-      run: git clone https://github.com/netlify/examples.git
+    - name: Clone Netlify MCP Server repository
+      run: git clone https://github.com/netlify/netlify-mcp.git
     
     - name: Install dependencies
-      working-directory: examples/mcp/express-mcp
+      working-directory: netlify-mcp
       run: npm install
     
     - name: Install Netlify CLI
       run: npm install -g netlify-cli
     
     - name: Deploy to Netlify
-      working-directory: examples/mcp/express-mcp
+      working-directory: netlify-mcp
       env:
         NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
         NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
@@ -128,7 +129,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '20'
         cache: 'npm'
     
     - name: Create MOe Apps website directory
@@ -411,7 +412,7 @@ jobs:
           command = "echo 'MOe Apps website ready for deployment'"
         
         [build.environment]
-          NODE_VERSION = "18"
+          NODE_VERSION = "20"
         
         [[redirects]]
           from = "/api/*"
