@@ -18,13 +18,28 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20.19'
+        node-version: '18'
         cache: 'npm'
     
     - name: Clone Netlify examples repository
       run: |
         git clone https://github.com/netlify/examples.git
+        echo "Contents of examples directory:"
         ls -la examples/
+        echo "Looking for MCP directory:"
+        find examples/ -name "*mcp*" -type d || echo "No MCP directories found"
+        echo "Contents of examples/mcp (if exists):"
+        ls -la examples/mcp/ || echo "examples/mcp directory not found"
+    
+    - name: Verify serverless MCP project exists
+      run: |
+        if [ ! -d "examples/mcp/serverless-mcp" ]; then
+          echo "Directory examples/mcp/serverless-mcp does not exist"
+          echo "Available directories in examples/:"
+          find examples/ -type d -maxdepth 3
+          exit 1
+        fi
+        echo "Serverless MCP project found"
     
     - name: Navigate to serverless MCP project
       working-directory: examples/mcp/serverless-mcp
@@ -89,7 +104,7 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '20.19'
+        node-version: '18'
         cache: 'npm'
     
     - name: Clone Netlify examples repository
