@@ -18,22 +18,22 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '20.19'
         cache: 'npm'
     
     - name: Clone Netlify examples repository
       run: |
         git clone https://github.com/netlify/examples.git
         echo "Contents of examples directory:"
-        ls -la examples/
+        ls -la examples/examples
         echo "Looking for MCP directory:"
-        find examples/ -name "*mcp*" -type d || echo "No MCP directories found"
+        find examples/examples -name "*mcp*" -type d || echo "No MCP directories found"
         echo "Contents of examples/mcp (if exists):"
-        ls -la examples/mcp/ || echo "examples/mcp directory not found"
+        ls -la examples/examples/mcp/ || echo "examples/examples/mcp directory not found"
     
     - name: Verify serverless MCP project exists
       run: |
-        if [ ! -d "examples/mcp/serverless-mcp" ]; then
+        if [ ! -d "examples/examples/mcp/serverless-mcp" ]; then
           echo "Directory examples/mcp/serverless-mcp does not exist"
           echo "Available directories in examples/:"
           find examples/ -type d -maxdepth 3
@@ -42,13 +42,13 @@ jobs:
         echo "Serverless MCP project found"
     
     - name: Navigate to serverless MCP project
-      working-directory: examples/mcp/serverless-mcp
+      working-directory: examples/examples/mcp/serverless-mcp
       run: |
         pwd
         ls -la
     
     - name: Install dependencies
-      working-directory: examples/mcp/serverless-mcp
+      working-directory: examples/examples/mcp/serverless-mcp
       run: |
         npm install
     
@@ -62,7 +62,7 @@ jobs:
       run: npm install -g @modelcontextprotocol/inspector mcp-remote@next
     
     - name: Start Netlify Dev in background
-      working-directory: examples/mcp/serverless-mcp
+      working-directory: examples/examples/mcp/serverless-mcp
       run: |
         netlify dev --port 8888 &
         echo $! > netlify_pid.txt
@@ -83,7 +83,7 @@ jobs:
     
     - name: Cleanup
       if: always()
-      working-directory: examples/mcp/serverless-mcp
+      working-directory: examples/examples/mcp/serverless-mcp
       run: |
         if [ -f netlify_pid.txt ]; then
           kill $(cat netlify_pid.txt) || true
@@ -104,21 +104,21 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: '20'
         cache: 'npm'
     
     - name: Clone Netlify examples repository
       run: git clone https://github.com/netlify/examples.git
     
     - name: Install dependencies
-      working-directory: examples/mcp/serverless-mcp
+      working-directory: examples/examples/mcp/serverless-mcp
       run: npm install
     
     - name: Install Netlify CLI
       run: npm install -g netlify-cli
     
     - name: Deploy to Netlify
-      working-directory: examples/mcp/serverless-mcp
+      working-directory: examples/examples/mcp/serverless-mcp
       env:
         NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
         NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
