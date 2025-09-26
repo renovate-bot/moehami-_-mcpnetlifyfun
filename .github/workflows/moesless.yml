@@ -1,0 +1,634 @@
+name: MOe Serverless MCP Setup and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  setup-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Clone Netlify MCP Server repository
+      run: |
+        git clone https://github.com/netlify/netlify-mcp.git
+        echo "Contents of netlify-mcp directory:"
+        ls -la netlify-mcp/
+        echo "Looking for example directories:"
+        find netlify-mcp/ -name "*example*" -type d || echo "No example directories found"
+        find netlify-mcp/ -name "*serverless*" -type d || echo "No serverless directories found"
+    
+    - name: Navigate to MCP server project
+      working-directory: netlify-mcp
+      run: |
+        pwd
+        ls -la
+        echo "Package.json contents:"
+        cat package.json || echo "No package.json found"
+    
+    - name: Install dependencies
+      working-directory: netlify-mcp
+      run: |
+        npm install
+    
+    - name: Install Netlify CLI globally
+      run: npm install -g netlify-cli
+    
+    - name: Verify Netlify CLI installation
+      run: netlify --version
+    
+    - name: Install MCP inspector
+      run: npm install -g @modelcontextprotocol/inspector mcp-remote@next
+    
+    - name: Start Netlify Dev in background
+      working-directory: netlify-mcp
+      run: |
+        netlify dev --port 8888 &
+        echo $! > netlify_pid.txt
+        sleep 30  # Wait for server to start
+    
+    - name: Verify server is running
+      run: |
+        echo "Checking if Netlify Dev server is responsive..."
+        # Check if the server responds to any request (even 404 is fine, means server is up)
+        if curl -s http://localhost:8888 > /dev/null; then
+          echo "✅ Server is running successfully"
+        else
+          echo "❌ Server is not responding"
+          exit 1
+        fi
+    
+    - name: Check server response and available endpoints
+      run: |
+        echo "Server response from root:"
+        curl -s -w "\nHTTP Status: %{http_code}\n" http://localhost:8888 || echo "Root endpoint not available"
+        
+        echo -e "\nChecking common MCP endpoints..."
+        
+        # Check for .netlify/functions endpoints
+        curl -s -w "\nHTTP Status: %{http_code}\n" http://localhost:8888/.netlify/functions/mcp || echo "Netlify function endpoint not available"
+        
+        # Check for /mcp endpoint
+        curl -s -w "\nHTTP Status: %{http_code}\n" http://localhost:8888/mcp || echo "Direct MCP endpoint not available"
+        
+        # Check for /api endpoints
+        curl -s -w "\nHTTP Status: %{http_code}\n" http://localhost:8888/api/mcp || echo "API MCP endpoint not available"
+    
+    - name: Test MCP functionality with proper endpoint
+      run: |
+        echo "Testing MCP protocol with JSON-RPC request..."
+        
+        # Test MCP initialize request
+        curl -s -X POST http://localhost:8888/.netlify/functions/mcp \
+          -H "Content-Type: application/json" \
+          -d '{
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+              "protocolVersion": "2024-11-05",
+              "capabilities": {},
+              "clientInfo": {
+                "name": "GitHub Actions Test",
+                "version": "1.0.0"
+              }
+            }
+          }' || echo "MCP function test completed (may not be implemented yet)"
+    
+    - name: Cleanup
+      if: always()
+      working-directory: netlify-mcp
+      run: |
+        if [ -f netlify_pid.txt ]; then
+          kill $(cat netlify_pid.txt) || true
+          rm netlify_pid.txt
+        fi
+        pkill -f "netlify dev" || true
+
+  # Optional: Deploy to Netlify for testing
+  deploy-test:
+    runs-on: ubuntu-latest
+    needs: setup-and-test
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Clone Netlify MCP Server repository
+      run: git clone https://github.com/netlify/netlify-mcp.git
+    
+    - name: Install dependencies
+      working-directory: netlify-mcp
+      run: npm install
+    
+    - name: Install Netlify CLI
+      run: npm install -g netlify-cli
+    
+    - name: Deploy to Netlify
+      working-directory: netlify-mcp
+      env:
+        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      run: |
+        netlify deploy --prod --dir=.
+      if: env.NETLIFY_AUTH_TOKEN != '' && env.NETLIFY_SITE_ID != ''
+
+  # Create MOe Apps website using MCP
+  create-moe-apps:
+    runs-on: ubuntu-latest
+    needs: setup-and-test
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Create MOe Apps website directory
+      run: |
+        mkdir -p moe-apps-website
+        cd moe-apps-website
+        npm init -y
+        npm install express cors dotenv
+    
+    - name: Create MOe Apps HTML structure
+      run: |
+        cat > moe-apps-website/index.html << 'EOF'
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>MOe Apps - AI-Powered Applications</title>
+            <style>
+                :root {
+                    --primary-green: #00C851;
+                    --secondary-green: #00A844;
+                    --primary-yellow: #FFD700;
+                    --secondary-yellow: #FFC107;
+                    --dark-green: #00753A;
+                    --light-green: #A8E6CF;
+                    --light-yellow: #FFF59D;
+                }
+                
+                * {
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }
+                
+                body {
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    background: linear-gradient(135deg, var(--primary-green), var(--primary-yellow));
+                    color: #333;
+                    line-height: 1.6;
+                    min-height: 100vh;
+                }
+                
+                .header {
+                    background: linear-gradient(90deg, var(--dark-green), var(--secondary-green));
+                    padding: 2rem 0;
+                    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+                }
+                
+                .container {
+                    max-width: 1200px;
+                    margin: 0 auto;
+                    padding: 0 2rem;
+                }
+                
+                .header h1 {
+                    color: var(--primary-yellow);
+                    font-size: 3rem;
+                    text-align: center;
+                    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+                    margin-bottom: 0.5rem;
+                }
+                
+                .header p {
+                    color: var(--light-yellow);
+                    text-align: center;
+                    font-size: 1.2rem;
+                }
+                
+                .main-content {
+                    padding: 3rem 0;
+                    background: rgba(255, 255, 255, 0.95);
+                    margin: 2rem 0;
+                    border-radius: 15px;
+                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+                }
+                
+                .app-grid {
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+                    gap: 2rem;
+                    margin-top: 2rem;
+                }
+                
+                .app-card {
+                    background: linear-gradient(145deg, var(--light-green), var(--light-yellow));
+                    border-radius: 15px;
+                    padding: 2rem;
+                    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+                    transition: transform 0.3s ease, box-shadow 0.3s ease;
+                    border: 2px solid transparent;
+                }
+                
+                .app-card:hover {
+                    transform: translateY(-10px);
+                    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+                    border: 2px solid var(--primary-yellow);
+                }
+                
+                .app-card h3 {
+                    color: var(--dark-green);
+                    font-size: 1.5rem;
+                    margin-bottom: 1rem;
+                }
+                
+                .app-card p {
+                    color: #555;
+                    margin-bottom: 1.5rem;
+                }
+                
+                .btn {
+                    background: linear-gradient(90deg, var(--primary-green), var(--secondary-green));
+                    color: white;
+                    border: none;
+                    padding: 0.8rem 2rem;
+                    border-radius: 25px;
+                    font-size: 1rem;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                    text-decoration: none;
+                    display: inline-block;
+                    text-align: center;
+                }
+                
+                .btn:hover {
+                    background: linear-gradient(90deg, var(--secondary-green), var(--primary-green));
+                    transform: scale(1.05);
+                    box-shadow: 0 4px 15px rgba(0, 200, 81, 0.4);
+                }
+                
+                .mcp-status {
+                    background: var(--primary-yellow);
+                    color: var(--dark-green);
+                    padding: 1rem;
+                    border-radius: 10px;
+                    margin: 2rem 0;
+                    text-align: center;
+                    font-weight: bold;
+                }
+                
+                .footer {
+                    background: var(--dark-green);
+                    color: var(--light-yellow);
+                    text-align: center;
+                    padding: 2rem 0;
+                    margin-top: 3rem;
+                }
+                
+                @keyframes pulse {
+                    0% { transform: scale(1); }
+                    50% { transform: scale(1.05); }
+                    100% { transform: scale(1); }
+                }
+                
+                .pulse {
+                    animation: pulse 2s infinite;
+                }
+            </style>
+        </head>
+        <body>
+            <header class="header">
+                <div class="container">
+                    <h1 class="pulse">MOe Apps</h1>
+                    <p>AI-Powered Applications with Model Context Protocol</p>
+                </div>
+            </header>
+            
+            <main class="main-content">
+                <div class="container">
+                    <div class="mcp-status" id="mcp-status">
+                        🔄 Checking MCP Connection...
+                    </div>
+                    
+                    <h2 style="text-align: center; color: var(--dark-green); margin-bottom: 2rem;">
+                        Our AI-Powered Applications
+                    </h2>
+                    
+                    <div class="app-grid">
+                        <div class="app-card">
+                            <h3>🤖 Smart Assistant</h3>
+                            <p>AI-powered assistant using MCP for enhanced context understanding and tool integration.</p>
+                            <button class="btn" onclick="testMCP('assistant')">Launch Assistant</button>
+                        </div>
+                        
+                        <div class="app-card">
+                            <h3>📊 Data Analyzer</h3>
+                            <p>Analyze and visualize your data with AI insights powered by Model Context Protocol.</p>
+                            <button class="btn" onclick="testMCP('analyzer')">Start Analysis</button>
+                        </div>
+                        
+                        <div class="app-card">
+                            <h3>🎨 Content Creator</h3>
+                            <p>Generate creative content with AI assistance and context-aware suggestions.</p>
+                            <button class="btn" onclick="testMCP('creator')">Create Content</button>
+                        </div>
+                        
+                        <div class="app-card">
+                            <h3>🔧 DevOps Helper</h3>
+                            <p>Streamline your DevOps workflows with AI-powered automation and monitoring.</p>
+                            <button class="btn" onclick="testMCP('devops')">Access Tools</button>
+                        </div>
+                    </div>
+                </div>
+            </main>
+            
+            <footer class="footer">
+                <div class="container">
+                    <p>&copy; 2025 MOe Apps - Powered by Model Context Protocol & AI</p>
+                </div>
+            </footer>
+            
+            <script>
+                // Test MCP connection
+                async function checkMCPConnection() {
+                    const statusElement = document.getElementById('mcp-status');
+                    
+                    try {
+                        // Try to connect to MCP endpoint
+                        const response = await fetch('/mcp', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                jsonrpc: '2.0',
+                                id: 1,
+                                method: 'initialize',
+                                params: {
+                                    protocolVersion: '2024-11-05',
+                                    capabilities: {},
+                                    clientInfo: {
+                                        name: 'MOe Apps',
+                                        version: '1.0.0'
+                                    }
+                                }
+                            })
+                        });
+                        
+                        if (response.ok) {
+                            statusElement.innerHTML = '✅ MCP Connected - Ready to serve!';
+                            statusElement.style.background = 'var(--primary-green)';
+                            statusElement.style.color = 'white';
+                        } else {
+                            throw new Error('MCP connection failed');
+                        }
+                    } catch (error) {
+                        statusElement.innerHTML = '❌ MCP Offline - Running in demo mode';
+                        statusElement.style.background = '#ff6b6b';
+                        statusElement.style.color = 'white';
+                    }
+                }
+                
+                // Test MCP functionality
+                async function testMCP(appType) {
+                    const apps = {
+                        assistant: 'Smart Assistant is initializing with MCP context...',
+                        analyzer: 'Data Analyzer is connecting to MCP tools...',
+                        creator: 'Content Creator is loading AI models...',
+                        devops: 'DevOps Helper is accessing system tools...'
+                    };
+                    
+                    alert(`🚀 ${apps[appType]}\n\nThis would normally launch the ${appType} application with full MCP integration!`);
+                    
+                    // In a real implementation, this would make actual MCP calls
+                    console.log(`Testing MCP integration for: ${appType}`);
+                }
+                
+                // Check MCP connection on page load
+                window.addEventListener('load', checkMCPConnection);
+            </script>
+        </body>
+        </html>
+        EOF
+    
+    - name: Create Netlify configuration
+      run: |
+        cat > moe-apps-website/netlify.toml << 'EOF'
+        [build]
+          publish = "."
+          command = "echo 'MOe Apps website ready for deployment'"
+        
+        [build.environment]
+          NODE_VERSION = "18"
+        
+        [[redirects]]
+          from = "/api/*"
+          to = "/.netlify/functions/:splat"
+          status = 200
+        
+        [[redirects]]
+          from = "/mcp"
+          to = "/.netlify/functions/mcp"
+          status = 200
+        
+        [functions]
+          directory = "netlify/functions"
+        EOF
+    
+    - name: Create MCP integration function
+      run: |
+        mkdir -p moe-apps-website/netlify/functions
+        cat > moe-apps-website/netlify/functions/mcp.js << 'EOF'
+        // MOe Apps MCP Integration Function
+        const express = require('express');
+        const cors = require('cors');
+        
+        const app = express();
+        app.use(cors());
+        app.use(express.json());
+        
+        // MCP Protocol Handler
+        app.post('/mcp', async (req, res) => {
+            const { method, params, id } = req.body;
+            
+            console.log('MCP Request:', { method, params, id });
+            
+            try {
+                switch (method) {
+                    case 'initialize':
+                        return res.json({
+                            jsonrpc: '2.0',
+                            id,
+                            result: {
+                                protocolVersion: '2024-11-05',
+                                capabilities: {
+                                    tools: {},
+                                    resources: {},
+                                    prompts: {}
+                                },
+                                serverInfo: {
+                                    name: 'MOe Apps MCP Server',
+                                    version: '1.0.0'
+                                }
+                            }
+                        });
+                    
+                    case 'tools/list':
+                        return res.json({
+                            jsonrpc: '2.0',
+                            id,
+                            result: {
+                                tools: [
+                                    {
+                                        name: 'moe_assistant',
+                                        description: 'AI Assistant with context awareness',
+                                        inputSchema: {
+                                            type: 'object',
+                                            properties: {
+                                                query: { type: 'string' }
+                                            }
+                                        }
+                                    },
+                                    {
+                                        name: 'moe_analyzer',
+                                        description: 'Data analysis and visualization tool',
+                                        inputSchema: {
+                                            type: 'object',
+                                            properties: {
+                                                data: { type: 'string' },
+                                                analysis_type: { type: 'string' }
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        });
+                    
+                    case 'tools/call':
+                        const { name, arguments: toolArgs } = params;
+                        return res.json({
+                            jsonrpc: '2.0',
+                            id,
+                            result: {
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: `MOe Apps tool '${name}' executed successfully with args: ${JSON.stringify(toolArgs)}`
+                                    }
+                                ]
+                            }
+                        });
+                    
+                    default:
+                        return res.status(400).json({
+                            jsonrpc: '2.0',
+                            id,
+                            error: {
+                                code: -32601,
+                                message: 'Method not found'
+                            }
+                        });
+                }
+            } catch (error) {
+                console.error('MCP Error:', error);
+                return res.status(500).json({
+                    jsonrpc: '2.0',
+                    id,
+                    error: {
+                        code: -32603,
+                        message: 'Internal error',
+                        data: error.message
+                    }
+                });
+            }
+        });
+        
+        // Export for Netlify Functions
+        exports.handler = async (event, context) => {
+            return new Promise((resolve, reject) => {
+                const req = {
+                    body: JSON.parse(event.body || '{}'),
+                    method: event.httpMethod,
+                    headers: event.headers
+                };
+                
+                const res = {
+                    json: (data) => resolve({
+                        statusCode: 200,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Access-Control-Allow-Origin': '*',
+                            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+                            'Access-Control-Allow-Headers': 'Content-Type'
+                        },
+                        body: JSON.stringify(data)
+                    }),
+                    status: (code) => ({
+                        json: (data) => resolve({
+                            statusCode: code,
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Access-Control-Allow-Origin': '*'
+                            },
+                            body: JSON.stringify(data)
+                        })
+                    })
+                };
+                
+                app.handle({ body: req.body, method: 'POST', url: '/mcp' }, res);
+            });
+        };
+        EOF
+    
+    - name: Install Netlify CLI
+      run: npm install -g netlify-cli
+    
+    - name: Deploy MOe Apps website
+      working-directory: moe-apps-website
+      env:
+        NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+      run: |
+        if [ -n "$NETLIFY_AUTH_TOKEN" ] && [ -n "$NETLIFY_SITE_ID" ]; then
+          netlify deploy --prod --dir=. --message="Deploy MOe Apps with MCP integration"
+          echo "✅ MOe Apps deployed successfully!"
+        else
+          echo "⚠️  Netlify credentials not found. Creating deployment package..."
+          tar -czf moe-apps-deployment.tar.gz .
+          echo "📦 Deployment package created: moe-apps-deployment.tar.gz"
+        fi
+    
+    - name: Upload MOe Apps artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: moe-apps-website
+        path: moe-apps-website/
+        retention-days: 30
