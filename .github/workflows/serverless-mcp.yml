@@ -23,7 +23,7 @@ jobs:
     
     - name: Clone Netlify examples repository
       run: |
-        git clone git@github.com:netlify/examples
+        git clone https://github.com/netlify/examples.git
         ls -la examples/
     
     - name: Navigate to serverless MCP project
